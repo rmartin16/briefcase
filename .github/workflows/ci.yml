@@ -136,7 +136,7 @@ jobs:
 
   verify-apps:
     name: App verification
-    needs: unit-tests
+#    needs: unit-tests
     strategy:
       max-parallel: 4
       matrix:
