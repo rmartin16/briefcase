@@ -137,31 +137,34 @@ jobs:
   verify-apps:
     name: App verification
     runs-on: ${{ matrix.platform }}
+    defaults:
+      run:
+        shell: bash
 #    needs: unit-tests
     strategy:
       max-parallel: 4
       matrix:
-#        os_name: ['macOS', 'windows', 'linux']
-        os_name: ['windows']
-        framework: ['toga']  #, 'pyside2', 'pyside6', 'ppb']
+        os_name: ['macOS', 'windows', 'linux']
+#        os_name: ['windows']
+        framework: ['toga', 'pyside2', 'pyside6', 'ppb']
         include:
-#        - os_name: macOS
-#          platform: macos-12
-#          briefcase-data-dir: ~/Library/Caches/org.beeware.briefcase
-#          pip-cache-dir: ~/Library/Caches/pip
-#          docker-cache-dir: ~/Library/Containers/com.docker.docker/Data/vms/0/
+        - os_name: macOS
+          platform: macos-12
+          briefcase-data-dir: ~/Library/Caches/org.beeware.briefcase
+          pip-cache-dir: ~/Library/Caches/pip
+          docker-cache-dir: ~/Library/Containers/com.docker.docker/Data/vms/0/
         - os_name: windows
           platform: windows-latest
           briefcase-data-dir: ~\AppData\Local\BeeWare\briefcase\Cache
           pip-cache-dir: ~\AppData\Local\pip\Cache
           docker-cache-dir: C:\ProgramData\DockerDesktop
-#        - os_name: linux
-#          # Need to use at least 22.04 to get the bugfix in flatpak for handling spaces in filenames.
-#          platform: ubuntu-22.04
-#          briefcase-data-dir: ~/.cache/briefcase
-#          pip-cache-dir: ~/.cache/pip
-#          # cache action cannot cache docker images (actions/cache#31)
-#          # docker-cache-dir: /var/lib/docker
+        - os_name: linux
+          # Need to use at least 22.04 to get the bugfix in flatpak for handling spaces in filenames.
+          platform: ubuntu-22.04
+          briefcase-data-dir: ~/.cache/briefcase
+          pip-cache-dir: ~/.cache/pip
+          # cache action cannot cache docker images (actions/cache#31)
+          # docker-cache-dir: /var/lib/docker
     steps:
     - name: Cache Briefcase tools
       uses: actions/cache@v3.0.10
@@ -193,52 +196,51 @@ jobs:
       run: |
         cd tests/apps
         cat verify-${{ matrix.framework }}.config | briefcase new
-#    - name: Build App
-#      run: |
-#        cd tests/apps/verify-${{ matrix.framework }}
-#        briefcase create
-#        briefcase build
-#        briefcase package --adhoc-sign
-#    - name: Build Xcode project
-#      if: matrix.os_name == 'macOS'
-#      run: |
-#        cd tests/apps/verify-${{ matrix.framework }}
-#        briefcase create ${{ matrix.os_name }} Xcode
-#        briefcase build ${{ matrix.os_name }} Xcode
-#        briefcase package ${{ matrix.os_name }} Xcode --adhoc-sign
+    - name: Build App
+      run: |
+        cd tests/apps/verify-${{ matrix.framework }}
+        briefcase create
+        briefcase build
+        briefcase package --adhoc-sign
+    - name: Build Xcode project
+      if: matrix.os_name == 'macOS'
+      run: |
+        cd tests/apps/verify-${{ matrix.framework }}
+        briefcase create ${{ matrix.os_name }} Xcode
+        briefcase build ${{ matrix.os_name }} Xcode
+        briefcase package ${{ matrix.os_name }} Xcode --adhoc-sign
     - name: Build Visual Studio project
       if: matrix.os_name == 'windows'
-      shell: bash
       run: |
         cd tests/apps/verify-${{ matrix.framework }}
         briefcase create ${{ matrix.os_name }} VisualStudio
         briefcase build ${{ matrix.os_name }} VisualStudio
         briefcase package ${{ matrix.os_name }} VisualStudio --adhoc-sign
-#    - name: Build Flatpak project
-#      if: matrix.os_name == 'linux' && matrix.framework == 'toga'
-#      run: |
-#        cd tests/apps/verify-${{ matrix.framework }}
-#        briefcase create ${{ matrix.os_name }} flatpak
-#        briefcase build ${{ matrix.os_name }} flatpak
-#        briefcase package ${{ matrix.os_name }} flatpak --adhoc-sign
-#    - name: Build Android App
-#      if: matrix.framework == 'toga'
-#      run: |
-#        cd tests/apps/verify-${{ matrix.framework }}
-#        briefcase create android
-#        briefcase build android
-#        briefcase package android --adhoc-sign
-#    - name: Build iOS App
-#      if: matrix.platform == 'macos-12' && matrix.framework == 'toga'
-#      run: |
-#        cd tests/apps/verify-${{ matrix.framework }}
-#        briefcase create iOS
-#        briefcase build iOS -d "iPhone SE (2nd generation)"
-#        briefcase package iOS --adhoc-sign
-#    - name: Build Web App
-#      if: matrix.framework == 'toga'
-#      run: |
-#        cd tests/apps/verify-${{ matrix.framework }}
-#        briefcase create web
-#        briefcase build web
-#        briefcase package web
+    - name: Build Flatpak project
+      if: matrix.os_name == 'linux' && matrix.framework == 'toga'
+      run: |
+        cd tests/apps/verify-${{ matrix.framework }}
+        briefcase create ${{ matrix.os_name }} flatpak
+        briefcase build ${{ matrix.os_name }} flatpak
+        briefcase package ${{ matrix.os_name }} flatpak --adhoc-sign
+    - name: Build Android App
+      if: matrix.framework == 'toga'
+      run: |
+        cd tests/apps/verify-${{ matrix.framework }}
+        briefcase create android
+        briefcase build android
+        briefcase package android --adhoc-sign
+    - name: Build iOS App
+      if: matrix.platform == 'macos-12' && matrix.framework == 'toga'
+      run: |
+        cd tests/apps/verify-${{ matrix.framework }}
+        briefcase create iOS
+        briefcase build iOS -d "iPhone SE (2nd generation)"
+        briefcase package iOS --adhoc-sign
+    - name: Build Web App
+      if: matrix.framework == 'toga'
+      run: |
+        cd tests/apps/verify-${{ matrix.framework }}
+        briefcase create web
+        briefcase build web
+        briefcase package web
