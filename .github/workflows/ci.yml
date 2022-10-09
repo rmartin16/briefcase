@@ -208,9 +208,10 @@ jobs:
 #        briefcase package ${{ matrix.os_name }} Xcode --adhoc-sign
     - name: Build Visual Studio project
       if: matrix.os_name == 'windows'
+      shell: bash
       run: |
         cd tests/apps/verify-${{ matrix.framework }}
-        briefcase create ${{ matrix.os_name }} VisualStudio || $(exit $?)
+        briefcase create ${{ matrix.os_name }} VisualStudio
         briefcase build ${{ matrix.os_name }} VisualStudio
         briefcase package ${{ matrix.os_name }} VisualStudio --adhoc-sign
 #    - name: Build Flatpak project
