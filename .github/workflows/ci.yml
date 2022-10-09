@@ -210,7 +210,7 @@ jobs:
       if: matrix.os_name == 'windows'
       run: |
         cd tests/apps/verify-${{ matrix.framework }}
-        briefcase create ${{ matrix.os_name }} VisualStudio || throw 1
+        briefcase create ${{ matrix.os_name }} VisualStudio || $(exit 1)
         briefcase build ${{ matrix.os_name }} VisualStudio
         briefcase package ${{ matrix.os_name }} VisualStudio --adhoc-sign
 #    - name: Build Flatpak project
