@@ -136,6 +136,7 @@ jobs:
 
   verify-apps:
     name: App verification
+    runs-on: ${{ matrix.platform }}
 #    needs: unit-tests
     strategy:
       max-parallel: 4
@@ -161,7 +162,6 @@ jobs:
 #          pip-cache-dir: ~/.cache/pip
 #          # cache action cannot cache docker images (actions/cache#31)
 #          # docker-cache-dir: /var/lib/docker
-    runs-on: ${{ matrix.platform }}
     steps:
     - name: Cache Briefcase tools
       uses: actions/cache@v3.0.10
