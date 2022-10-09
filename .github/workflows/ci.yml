@@ -209,13 +209,13 @@ jobs:
         briefcase create ${{ matrix.os_name }} Xcode
         briefcase build ${{ matrix.os_name }} Xcode
         briefcase package ${{ matrix.os_name }} Xcode --adhoc-sign
-    - name: Build Visual Studio project
-      if: matrix.os_name == 'windows'
-      run: |
-        cd tests/apps/verify-${{ matrix.framework }}
-        briefcase create ${{ matrix.os_name }} VisualStudio
-        briefcase build ${{ matrix.os_name }} VisualStudio
-        briefcase package ${{ matrix.os_name }} VisualStudio --adhoc-sign
+#    - name: Build Visual Studio project
+#      if: matrix.os_name == 'windows'
+#      run: |
+#        cd tests/apps/verify-${{ matrix.framework }}
+#        briefcase create ${{ matrix.os_name }} VisualStudio
+#        briefcase build ${{ matrix.os_name }} VisualStudio
+#        briefcase package ${{ matrix.os_name }} VisualStudio --adhoc-sign
     - name: Build Flatpak project
       if: matrix.os_name == 'linux' && matrix.framework == 'toga'
       run: |
