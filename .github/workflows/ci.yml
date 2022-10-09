@@ -193,12 +193,12 @@ jobs:
       run: |
         cd tests/apps
         cat verify-${{ matrix.framework }}.config | briefcase new
-    - name: Build App
-      run: |
-        cd tests/apps/verify-${{ matrix.framework }}
-        briefcase create
-        briefcase build
-        briefcase package --adhoc-sign
+#    - name: Build App
+#      run: |
+#        cd tests/apps/verify-${{ matrix.framework }}
+#        briefcase create
+#        briefcase build
+#        briefcase package --adhoc-sign
 #    - name: Build Xcode project
 #      if: matrix.os_name == 'macOS'
 #      run: |
