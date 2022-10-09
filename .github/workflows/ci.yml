@@ -163,42 +163,42 @@ jobs:
           # docker-cache-dir: /var/lib/docker
     runs-on: ${{ matrix.platform }}
     steps:
-#    - name: Cache Briefcase tools
-#      uses: actions/cache@v3.0.10
-#      with:
-#        key: briefcase-${{ matrix.platform }}
-#        path: |
-#          ~/.cookiecutters
-#          ${{ matrix.briefcase-data-dir }}
-#          ${{ matrix.pip-cache-dir }}
-#          ${{ matrix.docker-cache-dir }}
-#    - uses: actions/checkout@v3.1.0
-#      with:
-#        fetch-depth: 0
-#    - name: Set up Python
-#      uses: actions/setup-python@v4.2.0
-#      with:
-#        python-version: ${{ env.python_version }}
-#    - name: Install system dependencies
-#      if: matrix.platform == 'ubuntu-22.04'
-#      run: |
-#        sudo apt-get install -y flatpak flatpak-builder
-#    - name: Install dependencies
-#      run: |
-#        pip install --upgrade pip
-#        pip install --upgrade setuptools
-#        pip install setuptools_scm
-#        pip install .
-#    - name: Create App
-#      run: |
-#        cd tests/apps
-#        cat verify-${{ matrix.framework }}.config | briefcase new
-#    - name: Build App
-#      run: |
-#        cd tests/apps/verify-${{ matrix.framework }}
-#        briefcase create
-#        briefcase build
-#        briefcase package --adhoc-sign
+    - name: Cache Briefcase tools
+      uses: actions/cache@v3.0.10
+      with:
+        key: briefcase-${{ matrix.platform }}
+        path: |
+          ~/.cookiecutters
+          ${{ matrix.briefcase-data-dir }}
+          ${{ matrix.pip-cache-dir }}
+          ${{ matrix.docker-cache-dir }}
+    - uses: actions/checkout@v3.1.0
+      with:
+        fetch-depth: 0
+    - name: Set up Python
+      uses: actions/setup-python@v4.2.0
+      with:
+        python-version: ${{ env.python_version }}
+    - name: Install system dependencies
+      if: matrix.platform == 'ubuntu-22.04'
+      run: |
+        sudo apt-get install -y flatpak flatpak-builder
+    - name: Install dependencies
+      run: |
+        pip install --upgrade pip
+        pip install --upgrade setuptools
+        pip install setuptools_scm
+        pip install .
+    - name: Create App
+      run: |
+        cd tests/apps
+        cat verify-${{ matrix.framework }}.config | briefcase new
+    - name: Build App
+      run: |
+        cd tests/apps/verify-${{ matrix.framework }}
+        briefcase create
+        briefcase build
+        briefcase package --adhoc-sign
 #    - name: Build Xcode project
 #      if: matrix.os_name == 'macOS'
 #      run: |
