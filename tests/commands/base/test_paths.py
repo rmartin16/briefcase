@@ -15,6 +15,8 @@ def test_path_is_realpath(tmp_path):
     data_path = tmp_path / "base"
     command = DummyCommand(data_path=data_path)
 
+    os.makedirs(data_path)
+
     assert str(command.data_path) == os.path.realpath(data_path)
 
 
