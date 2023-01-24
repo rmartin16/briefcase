@@ -9,6 +9,15 @@ from briefcase.exceptions import BriefcaseCommandError
 from .conftest import DummyCommand
 
 
+def test_path_is_realpath(tmp_path):
+    """Briefcase path is realpath."""
+    tmp_path = os.environ.get("LOCALAPPDATA", tmp_path)
+    data_path = tmp_path / "base"
+    command = DummyCommand(data_path=data_path)
+
+    assert str(command.data_path) == os.path.realpath(data_path)
+
+
 def test_space_in_path(tmp_path):
     """The briefcase data path cannot contain spaces."""
     with pytest.raises(
