@@ -30,7 +30,7 @@ jobs:
 
   unit-tests:
     name: Unit tests
-    needs: [pre-commit, towncrier, package]
+    needs: [pre-commit, package]
     runs-on: ${{ matrix.platform }}-latest
     continue-on-error: ${{ matrix.experimental }}
     strategy:
