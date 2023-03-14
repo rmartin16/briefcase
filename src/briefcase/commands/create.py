@@ -474,7 +474,7 @@ class CreateCommand(BaseCommand):
                             "pip",
                             "install",
                             "--upgrade",
-                            "--no-user",
+                            # "--no-user",
                             f"--target={app_packages_path}",
                         ]
                         + self._extra_pip_args(app)
