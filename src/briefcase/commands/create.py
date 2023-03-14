@@ -474,6 +474,7 @@ class CreateCommand(BaseCommand):
                             "pip",
                             "install",
                             "--upgrade",
+                            "--no-build-isolation",
                             # "--no-user",
                             f"--target={app_packages_path}",
                         ]
