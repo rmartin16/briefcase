@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+import subprocess
+import time
 from abc import abstractmethod
 
 from briefcase.config import AppConfig
@@ -79,6 +81,13 @@ class LogFilter:
             if self.exit_filter:
                 self.returncode = self.exit_filter(tail)
                 if self.returncode is not None:
+                    try:
+                        print(f"[{time.time()}] waiting on app to exit")
+                        self.log_popen.wait(timeout=3)
+                    except subprocess.TimeoutExpired:
+                        print(f"[{time.time()}] gave up waiting for app to quit")
+                    print(f"[{time.time()}] moving on after app exit")
+
                     raise StopStreaming()
 
         # Return the display line
@@ -188,7 +197,7 @@ class RunAppMixin:
                 # If we're monitoring an actual app (not just a log stream),
                 # and the app didn't exit cleanly, surface the error to the user.
                 self.logger.error(f"{popen.returncode=}")
-                if popen.returncode != 0:
+                if popen.poll() != 0:
                     raise BriefcaseCommandError(f"Problem running app {app.app_name}.")
 
         except KeyboardInterrupt:
