@@ -86,8 +86,8 @@ class LogFilter:
                         self.log_popen.wait(timeout=3)
                     except subprocess.TimeoutExpired:
                         print(f"[{time.time()}] gave up waiting for app to quit")
-                    print(f"[{time.time()}] moving on after app exit")
 
+                    print(f"[{time.time()}] moving on after app exit")
                     raise StopStreaming()
 
         # Return the display line
@@ -140,7 +140,8 @@ class RunAppMixin:
         Catches and cleans up after any Ctrl-C interrupts.
 
         :param app: The app to be launched
-        :param popen: The Popen object for the stream we are monitoring
+        :param popen: The Popen object for the stream we are monitoring; this Popen
+            process will be closed after log streaming completes.
         :param test_mode: Are we launching in test mode?
         :param clean_filter: The log cleaning filter to use; see ``LogFilter``
             for details.
@@ -259,7 +260,6 @@ class RunCommand(RunAppMixin, BaseCommand):
         no_update: bool = False,
         test_mode: bool = False,
         passthrough: list[str] | None = None,
-        config_overrides: list[str] | None = None,
         **options,
     ) -> dict | None:
         # Which app should we run? If there's only one defined
