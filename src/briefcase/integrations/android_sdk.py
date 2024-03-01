@@ -1336,6 +1336,11 @@ You can also start the emulator manually by running:
 
         # Phase 1: Wait for the device to appear so we can get an
         # ADB instance for the new device.
+        self.tools.subprocess.stream_output(
+            label="Android emulator",
+            popen_process=emulator_popen,
+        )
+
         try:
             with self.tools.input.wait_bar("Starting emulator...") as keep_alive:
                 adb = None
