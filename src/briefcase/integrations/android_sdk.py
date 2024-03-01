@@ -1327,6 +1327,13 @@ You can also start the emulator manually by running:
     $ {emulator_command}
 """
 
+        with self.tools.input.wait_bar(
+            "Waiting 30 seconds before probing emulator..."
+        ) as keep_alive:
+            for _ in range(15):
+                keep_alive.update()
+                time.sleep(2)
+
         failed_startup_error_msg = f"{{prologue}}\n{general_error_msg}"
 
         # The boot process happens in 2 phases.
