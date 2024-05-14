@@ -98,7 +98,7 @@ def test_distribution_path(
 ):
     """The distribution path contains vendor details."""
     # Mock return value for ABI from packaging system
-    create_command._build_env_abi = MagicMock(return_value="wonky")
+    create_command.build_env_abi = MagicMock(return_value="wonky")
 
     # Set vendor base (RPM package naming changes for openSUSE)
     first_app_config.target_vendor_base = vendor_base

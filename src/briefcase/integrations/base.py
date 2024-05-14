@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     from briefcase.integrations.download import Download
     from briefcase.integrations.flatpak import Flatpak
     from briefcase.integrations.java import JDK
+    from briefcase.integrations.linux import LinuxEnvironment
     from briefcase.integrations.linuxdeploy import LinuxDeploy
     from briefcase.integrations.rcedit import RCEdit
     from briefcase.integrations.subprocess import Subprocess
@@ -142,7 +143,7 @@ class ManagedTool(Tool):
 
 class ToolCache(Mapping):
     # Useful fixed filesystem locations
-    ETC_OS_RELEASE: Path = Path("/etc/os-release")
+    ETC_OS_RELEASE: Path = Path("/etc/os-release")  # TODO:PR: remove
 
     # Briefcase tools
     android_sdk: AndroidSDK
@@ -152,6 +153,7 @@ class ToolCache(Mapping):
     flatpak: Flatpak
     git: git_
     java: JDK
+    linux: LinuxEnvironment
     linuxdeploy: LinuxDeploy
     rcedit: RCEdit
     subprocess: Subprocess

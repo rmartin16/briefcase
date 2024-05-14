@@ -136,7 +136,7 @@ def test_default_install_scope(create_command, first_app_config, tmp_path):
 
 def test_per_machine_install_scope(create_command, first_app_config, tmp_path):
     """By default, app should be installed per user."""
-    first_app_config.system_installer = True
+    first_app_config.install_package_cmdline = True
 
     context = create_command.output_format_template_context(first_app_config)
 
@@ -149,7 +149,7 @@ def test_per_machine_install_scope(create_command, first_app_config, tmp_path):
 
 def test_per_user_install_scope(create_command, first_app_config, tmp_path):
     """App can be set to have explicit per-user scope."""
-    first_app_config.system_installer = False
+    first_app_config.install_package_cmdline = False
 
     context = create_command.output_format_template_context(first_app_config)
 

@@ -4,7 +4,6 @@ import gzip
 import os
 import re
 import subprocess
-import sys
 from pathlib import Path
 
 from briefcase.commands import (
@@ -17,21 +16,20 @@ from briefcase.commands import (
 )
 from briefcase.config import AppConfig
 from briefcase.exceptions import BriefcaseCommandError, UnsupportedHostError
+from briefcase.integrations.base import ToolCache
 from briefcase.integrations.docker import Docker, DockerAppContext
+from briefcase.integrations.linux import SUSE, Arch, LinuxEnvironment, Unknown
 from briefcase.integrations.subprocess import NativeAppContext
 from briefcase.platforms.linux import (
-    ARCH,
-    DEBIAN,
-    RHEL,
-    SUSE,
     DockerOpenCommand,
     LinuxMixin,
     LocalRequirementsMixin,
-    parse_freedesktop_os_release,
 )
 
 
 class LinuxSystemPassiveMixin(LinuxMixin):
+    tools: ToolCache
+
     # The Passive mixin honors the Docker options, but doesn't try to verify
     # Docker exists. It is used by commands that are "passive" from the
     # perspective of the build system (e.g., Run).
@@ -67,24 +65,24 @@ class LinuxSystemPassiveMixin(LinuxMixin):
     def build_path(self, app):
         # Override the default build path to use the vendor name,
         # rather than "linux"
-        return self.base_path / "build" / app.app_name / app.target_vendor
+        return self.base_path / f"build/{app.app_name}/{app.target_linux.vendor}"
 
     def bundle_path(self, app):
         # Override the default bundle path to use the codename,
         # rather than "system"
-        return self.build_path(app) / app.target_codename
+        return self.build_path(app) / app.target_linux.codename
 
     def project_path(self, app):
         return self.bundle_path(app) / f"{app.app_name}-{app.version}"
 
     def binary_path(self, app):
-        return self.project_path(app) / "usr/bin" / app.app_name
+        return self.project_path(app) / f"usr/bin/{app.app_name}"
 
     def rpm_tag(self, app):
-        if app.target_vendor == "fedora":
-            return f"fc{app.target_codename}"
+        if app.target_linux.vendor == "fedora":
+            return f"fc{app.target_linux.codename}"
         else:
-            return f"el{app.target_codename}"
+            return f"el{app.target_linux.codename}"
 
     def target_glibc_version(self, app):
         target_glibc = self.tools.os.confstr("CS_GNU_LIBC_VERSION").split()[1]
@@ -93,23 +91,6 @@ class LinuxSystemPassiveMixin(LinuxMixin):
     def app_python_version_tag(self, app):
         # Use the version of Python that was used to run Briefcase.
         return self.python_version_tag
-
-    def platform_freedesktop_info(self, app):
-        try:
-            if sys.version_info < (3, 10):  # pragma: no-cover-if-gte-py310
-                # This reproduces the Python 3.10 platform.freedesktop_os_release() function.
-                with self.tools.ETC_OS_RELEASE.open(encoding="utf-8") as f:
-                    freedesktop_info = parse_freedesktop_os_release(f.read())
-            else:  # pragma: no-cover-if-lt-py310
-                freedesktop_info = self.tools.platform.freedesktop_os_release()
-
-        except OSError as e:
-            raise BriefcaseCommandError(
-                "Could not find the /etc/os-release file. "
-                "Is this a FreeDesktop-compliant Linux distribution?"
-            ) from e
-
-        return freedesktop_info
 
     def finalize_app_config(self, app: AppConfig):
         """Finalize app configuration.
@@ -124,33 +105,35 @@ class LinuxSystemPassiveMixin(LinuxMixin):
         :param app: The app configuration to finalize.
         """
         self.logger.info("Finalizing application configuration...", prefix=app.app_name)
-        freedesktop_info = self.platform_freedesktop_info(app)
 
-        # Process the FreeDesktop content to give the vendor, codename and vendor base.
-        (
-            app.target_vendor,
-            app.target_codename,
-            app.target_vendor_base,
-        ) = self.vendor_details(freedesktop_info)
+        if self.use_docker:
+            app.target_linux = self.tools.linux.from_image_tag(self.target_image)
+        else:
+            app.target_linux = self.tools.linux.from_host()
 
         self.logger.info(
-            f"Targeting {app.target_vendor}:{app.target_codename} (Vendor base {app.target_vendor_base})"
+            f"Targeting {app.target_linux.vendor}:{app.target_linux.codename} "
+            f"(Vendor base {app.target_linux.base_distribution().name})"
         )
 
-        if not self.use_docker:
-            app.target_image = f"{app.target_vendor}:{app.target_codename}"
-        else:
-            # If we're building for Arch, and Docker does user mapping, we can't build,
-            # because Arch won't let makepkg run as root. Docker on macOS *does* map the
-            # user, but introducing a step-down user doesn't alter behavior, so we can
-            # allow it.
-            if (
-                app.target_vendor_base == ARCH
-                and self.tools.docker.is_user_mapped
-                and self.tools.host_os != "Darwin"
-            ):
-                raise BriefcaseCommandError(
-                    """\
+        app.target_image = f"{app.target_linux.vendor}:{app.target_linux.codename}"
+
+        # Arch does not support running makepkg as root. So, if Docker is mapping
+        # users (which means the user in the container will be root) or if the user
+        # running Briefcase is root, cancel the build.
+        #
+        # Docker on macOS *does* map the user, but introducing a step-down user doesn't
+        # alter behavior, so we can allow it.
+        if (
+            app.target_linux.base_distribution == Arch
+            and self.tools.host_os != "Darwin"
+            and (
+                (self.use_docker and self.tools.docker.is_user_mapped)
+                or (not self.use_docker and (self.tools.os.getuid == 0))
+            )
+        ):
+            raise BriefcaseCommandError(
+                """\
 Briefcase cannot use this Docker installation to target Arch Linux since the
 tools to build packages for Arch cannot be run as root.
 
@@ -161,7 +144,7 @@ This most likely means you're using Docker Desktop or rootless Docker.
 
 Install Docker Engine and try again or run Briefcase on an Arch host system.
 """
-                )
+            )
 
         # Merge target-specific configuration items into the app config This
         # means:
@@ -172,15 +155,12 @@ Install Docker Engine and try again or run Briefcase on an Arch host system.
         #   specific
         # The vendor base config (e.g., redhat). The vendor base might not
         # be known, so fall back to an empty vendor config.
-        if app.target_vendor_base:
-            vendor_base_config = getattr(app, app.target_vendor_base, {})
+        if (base_distribution := app.target_linux.base_distribution()) is not Unknown:
+            vendor_base_config = getattr(app, base_distribution.freedesktop_id, {})
         else:
             vendor_base_config = {}
-        vendor_config = getattr(app, app.target_vendor, {})
-        try:
-            codename_config = vendor_config[app.target_codename]
-        except KeyError:
-            codename_config = {}
+        vendor_config = getattr(app, app.target_linux.vendor, {})
+        codename_config = vendor_config.get(app.target_linux.codename, {})
 
         # Copy all the specific configurations to the app config
         for config in [
@@ -216,64 +196,39 @@ class LinuxSystemMostlyPassiveMixin(LinuxSystemPassiveMixin):
             python_version_tag = super().app_python_version_tag(app)
         return python_version_tag
 
-    def _build_env_abi(self, app: AppConfig):
+    def build_env_abi(self, app: AppConfig):
         """Retrieves the ABI the packaging system is targeting in the build env.
 
         Each packaging system uses different values to identify the exact ABI that
         describes the target environment...so just defer to the packaging system.
         """
-        command = {
-            "deb": ["dpkg", "--print-architecture"],
-            "rpm": ["rpm", "--eval", "%_target_cpu"],
-            "pkg": ["pacman-conf", "Architecture"],
-        }[app.packaging_format]
         try:
-            return (
-                self.tools[app].app_context.check_output(command).split("\n")[0].strip()
-            )
-        except (OSError, subprocess.CalledProcessError) as e:
-            raise BriefcaseCommandError(
-                "Failed to determine build environment's ABI for packaging."
-            ) from e
-
-    def deb_abi(self, app: AppConfig) -> str:
-        """The default ABI for dpkg packaging for the target environment."""
-        try:
-            return self._deb_abi
+            app.packaging_abi
         except AttributeError:
-            self._deb_abi = self._build_env_abi(app)
-            return self._deb_abi
-
-    def rpm_abi(self, app: AppConfig) -> str:
-        """The default ABI for rpm packaging for the target environment."""
-        try:
-            return self._rpm_abi
-        except AttributeError:
-            self._rpm_abi = self._build_env_abi(app)
-            return self._rpm_abi
-
-    def pkg_abi(self, app: AppConfig) -> str:
-        """The default ABI for pacman packaging for the target environment."""
-        try:
-            return self._pkg_abi
-        except AttributeError:
-            self._pkg_abi = self._build_env_abi(app)
-            return self._pkg_abi
+            try:
+                app.packaging_abi = (
+                    self.tools[app]
+                    .app_context.check_output(app.target_linux.package_abi_cmdline())
+                    .split("\n")[0]
+                    .strip()
+                )
+            except (OSError, subprocess.CalledProcessError) as e:
+                raise BriefcaseCommandError(
+                    "Failed to determine build environment's ABI for packaging."
+                ) from e
+            return app.packaging_abi
 
     def distribution_filename(self, app: AppConfig) -> str:
-        if app.packaging_format == "deb":
-            return (
-                f"{app.app_name}"
-                f"_{app.version}"
-                f"-{getattr(app, 'revision', 1)}"
-                f"~{app.target_vendor}"
-                f"-{app.target_codename}"
-                f"_{self.deb_abi(app)}"
-                ".deb"
-            )
-        elif app.packaging_format == "rpm":
+        app.target_linux.package_file_name.format(
+            name=app.app_name,
+            version=app.version,
+            revision=getattr(app, "revision", 1),
+            abi=self.build_env_abi(app),
+        )
+
+        if app.packaging_format == "rpm":
             # openSUSE doesn't include a distro tag
-            if app.target_vendor_base == SUSE:
+            if app.target_linux.base_distribution() == SUSE:
                 distro_tag = ""
             else:
                 distro_tag = f".{self.rpm_tag(app)}"
@@ -344,32 +299,15 @@ class LinuxSystemMostlyPassiveMixin(LinuxSystemPassiveMixin):
 
         return target_glibc
 
-    def platform_freedesktop_info(self, app: AppConfig):
-        if self.use_docker:
-            # Preserve the target image on the command line as the app's target
-            app.target_image = self.target_image
-
-            # Extract release information from the image.
-            with self.input.wait_bar(
-                f"Checking Docker target image {app.target_image}..."
-            ):
-                output = self.tools.docker.check_output(
-                    ["cat", "/etc/os-release"],
-                    image_tag=app.target_image,
-                )
-                freedesktop_info = parse_freedesktop_os_release(output)
-        else:
-            freedesktop_info = super().platform_freedesktop_info(app)
-
-        return freedesktop_info
-
     def docker_image_tag(self, app: AppConfig):
         """The Docker image tag for an app."""
-        return f"briefcase/{app.bundle_identifier.lower()}:{app.target_vendor}-{app.target_codename}"
+        tag = f"{app.target_linux.vendor}-{app.target_linux.codename}"
+        return f"briefcase/{app.bundle_identifier.lower()}:{tag}"
 
     def verify_tools(self):
         """If we're using Docker, verify that it is available."""
         super().verify_tools()
+        LinuxEnvironment.verify(tools=self.tools)
         if self.use_docker:
             Docker.verify(tools=self.tools, image_tag=self.target_image)
 
@@ -456,67 +394,15 @@ class LinuxSystemMostlyPassiveMixin(LinuxSystemPassiveMixin):
                 f"is not the system python3 (3.{system_version[1]})."
             )
 
-    def _system_requirement_tools(self, app: AppConfig):
-        """Utility method returning the packages and tools needed to verify system
-        requirements.
-
-        :param app: The app being built.
-        :returns: A triple containing (0) The list of package names that must
-            be installed at a bare minimum; (1) the arguments for the command
-            used to verify the existence of a package on a system, and (2)
-            the command used to install packages. All three values are `None`
-            if the system cannot be identified.
-        """
-        if app.target_vendor_base == DEBIAN:
-            base_system_packages = ["python3-dev", "build-essential"]
-            system_verify = ["dpkg", "-s"]
-            system_installer = ["apt", "install"]
-        elif app.target_vendor_base == RHEL:
-            base_system_packages = [
-                "python3-devel",
-                "gcc",
-                "make",
-                "pkgconf-pkg-config",
-            ]
-            system_verify = ["rpm", "-q"]
-            system_installer = ["dnf", "install"]
-        elif app.target_vendor_base == SUSE:
-            base_system_packages = [
-                "python3-devel",
-                "patterns-devel-base-devel_basis",
-            ]
-            system_verify = ["rpm", "-q", "--whatprovides"]
-            system_installer = ["zypper", "install"]
-        elif app.target_vendor_base == ARCH:
-            base_system_packages = [
-                "python3",
-                "base-devel",
-            ]
-            system_verify = ["pacman", "-Q"]
-            system_installer = ["pacman", "-Syu"]
-        else:
-            base_system_packages = None
-            system_verify = None
-            system_installer = None
-
-        return (
-            base_system_packages,
-            system_verify,
-            system_installer,
-        )
-
     def verify_system_packages(self, app: AppConfig):
         """Verify that the required system packages are installed.
 
         :param app: The app being built.
         """
-        (
-            base_system_packages,
-            system_verify,
-            system_installer,
-        ) = self._system_requirement_tools(app)
-
-        if not (system_verify and self.tools.shutil.which(system_verify[0])):
+        if not (
+            app.target_linux.install_package_cmdline
+            and self.tools.shutil.which(app.target_linux.install_package_cmdline[0])
+        ):
             self.logger.warning(
                 """
 *************************************************************************
@@ -536,9 +422,14 @@ class LinuxSystemMostlyPassiveMixin(LinuxSystemPassiveMixin):
         # Run a check for each package listed in the app's system_requires,
         # plus the baseline system packages that are required.
         missing = []
+        base_system_packages = (
+            app.target_linux.python_packages + app.target_linux.build_packages
+        )
         for package in base_system_packages + getattr(app, "system_requires", []):
             try:
-                self.tools.subprocess.check_output(system_verify + [package])
+                self.tools.subprocess.check_output(
+                    app.target_linux.verify_package_cmdline + [package]
+                )
             except subprocess.CalledProcessError:
                 missing.append(package)
 
@@ -548,7 +439,7 @@ class LinuxSystemMostlyPassiveMixin(LinuxSystemPassiveMixin):
                 f"""\
 Unable to build {app.app_name} due to missing system dependencies. Run:
 
-    sudo {" ".join(system_installer)} {" ".join(missing)}
+    sudo {" ".join(app.target_linux.install_package_cmdline)} {" ".join(missing)}
 
 to install the missing dependencies, and re-run Briefcase.
 """
@@ -614,7 +505,7 @@ class LinuxSystemCreateCommand(LinuxSystemMixin, LocalRequirementsMixin, CreateC
 
         # Linux system templates use the target codename, rather than
         # the format "system" as the leaf of the bundle path
-        context["format"] = app.target_codename
+        context["format"] = app.target_linux.codename
 
         # The base template context includes the host Python version;
         # override that with an app-specific Python version, allowing
@@ -625,7 +516,7 @@ class LinuxSystemCreateCommand(LinuxSystemMixin, LocalRequirementsMixin, CreateC
         context["docker_base_image"] = app.target_image
 
         # Add the vendor base
-        context["vendor_base"] = app.target_vendor_base
+        context["vendor_base"] = app.target_linux.base_distribution().freedesktop_id
 
         # Use the non-root user if Docker is not mapping usernames. Also use a non-root
         # user if we're on macOS; user mapping doesn't alter Docker operation, but some
@@ -686,11 +577,7 @@ class LinuxSystemBuildCommand(LinuxSystemMixin, BuildCommand):
         # Make the folder for docs
         doc_folder = (
             self.bundle_path(app)
-            / f"{app.app_name}-{app.version}"
-            / "usr"
-            / "share"
-            / "doc"
-            / app.app_name
+            / f"{app.app_name}-{app.version}/usr/share/doc/{app.app_name}"
         )
         doc_folder.mkdir(parents=True, exist_ok=True)
 
@@ -712,11 +599,10 @@ with your app's licensing terms.
             changelog = self.base_path / "CHANGELOG"
             if changelog.is_file():
                 with changelog.open(encoding="utf-8") as infile:
-                    outfile = gzip.GzipFile(
+                    with gzip.GzipFile(
                         doc_folder / "changelog.gz", mode="wb", mtime=0
-                    )
-                    outfile.write(infile.read().encode("utf-8"))
-                    outfile.close()
+                    ) as outfile:
+                        outfile.write(infile.read().encode("utf-8"))
             else:
                 raise BriefcaseCommandError(
                     """\
@@ -729,12 +615,7 @@ with details about the release.
 
         # Make a folder for manpages
         man_folder = (
-            self.bundle_path(app)
-            / f"{app.app_name}-{app.version}"
-            / "usr"
-            / "share"
-            / "man"
-            / "man1"
+            self.bundle_path(app) / f"{app.app_name}-{app.version}/usr/share/man/man1"
         )
         man_folder.mkdir(parents=True, exist_ok=True)
 
@@ -742,11 +623,10 @@ with details about the release.
             manpage_source = self.bundle_path(app) / f"{app.app_name}.1"
             if manpage_source.is_file():
                 with manpage_source.open(encoding="utf-8") as infile:
-                    outfile = gzip.GzipFile(
+                    with gzip.GzipFile(
                         man_folder / f"{app.app_name}.1.gz", mode="wb", mtime=0
-                    )
-                    outfile.write(infile.read().encode("utf-8"))
-                    outfile.close()
+                    ) as outfile:
+                        outfile.write(infile.read().encode("utf-8"))
             else:
                 raise BriefcaseCommandError(
                     f"Template does not provide a manpage source file `{app.app_name}.1`"
@@ -858,17 +738,12 @@ class LinuxSystemPackageCommand(LinuxSystemMixin, PackageCommand):
         super().verify_app_tools(app)
         # If "system" packaging format was selected, determine what that means.
         if app.packaging_format == "system":
-            app.packaging_format = {
-                DEBIAN: "deb",
-                RHEL: "rpm",
-                ARCH: "pkg",
-                SUSE: "rpm",
-            }.get(app.target_vendor_base, None)
+            app.packaging_format = app.target_linux.packaging_format
 
         if app.packaging_format is None:
             raise BriefcaseCommandError(
                 "Briefcase doesn't know the system packaging format for "
-                f"{app.target_vendor}. You may be able to build a package "
+                f"{app.target_linux.vendor}. You may be able to build a package "
                 "by manually specifying a format with -p/--packaging-format"
             )
 

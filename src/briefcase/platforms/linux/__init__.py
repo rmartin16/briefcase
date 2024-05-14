@@ -12,47 +12,6 @@ from briefcase.exceptions import BriefcaseCommandError, ParseError
 
 DEFAULT_OUTPUT_FORMAT = "system"
 
-DEBIAN = "debian"
-RHEL = "rhel"
-ARCH = "arch"
-SUSE = "suse"
-
-
-def parse_freedesktop_os_release(content):
-    """Parse the content of an /etc/os-release file.
-
-    Implementation adapted from Example 5 of
-    https://www.freedesktop.org/software/systemd/man/os-release.html
-
-    :param content: The text content of the /etc/os-release file.
-    :returns: A dictionary of key-value pairs, in the same format returned by
-        `platform.freedesktop_os_release()`.
-    """
-    values = {}
-    for line_number, line in enumerate(content.split("\n"), start=1):
-        line = line.rstrip()
-        if not line or line.startswith("#"):
-            continue
-        m = re.match(r"([A-Z][A-Z_0-9]+)=(.*)", line)
-        if m:
-            name, val = m.groups()
-            if val and val[0] in "\"'":
-                try:
-                    val = ast.literal_eval(val)
-                except SyntaxError as e:
-                    raise ParseError(
-                        "Failed to parse output of FreeDesktop os-release file; "
-                        f"Line {line_number}: {e}"
-                    )
-            values[name] = val
-        else:
-            raise ParseError(
-                "Failed to parse output of FreeDesktop os-release file; "
-                f"Line {line_number}: {line!r}"
-            )
-
-    return values
-
 
 class LinuxMixin:
     platform = "linux"
@@ -79,47 +38,6 @@ class LinuxMixin:
             "https://github.com/indygreg/python-build-standalone/releases/download/"
             f"{datestamp}/cpython-{support_revision}-{python_download_arch}-unknown-linux-gnu-install_only.tar.gz"
         )
-
-    def vendor_details(self, freedesktop_info):
-        """Normalize the identity of the target Linux vendor, version, and base.
-
-        :param freedesktop_info: The parsed content of the FreeDesktop /etc/os-release
-            file. This is the same format returned by
-            `platform.freedesktop_os_release()`.
-        :returns: A tuple of (vendor, version, vendor_base).
-        """
-        vendor = freedesktop_info["ID"]
-        try:
-            codename = freedesktop_info["VERSION_CODENAME"]
-            if not codename:
-                # Fedora *has* a VERSION_CODENAME key, but it is empty.
-                # Treat it as missing.
-                raise KeyError("VERSION_CODENAME")
-        except KeyError:
-            try:
-                # Arch uses a specific constant in VERSION_ID
-                if freedesktop_info["VERSION_ID"] == "TEMPLATE_VERSION_ID":
-                    codename = "rolling"
-                else:
-                    codename = freedesktop_info["VERSION_ID"].split(".")[0]
-            except KeyError:
-                # Manjaro doesn't have a VERSION_ID key
-                codename = "rolling"
-
-        # Process the vendor_base from the vendor.
-        id_like = freedesktop_info.get("ID_LIKE", "").split()
-        if vendor == DEBIAN or DEBIAN in id_like or "ubuntu" in id_like:
-            vendor_base = DEBIAN
-        elif vendor == RHEL or vendor == "fedora" or RHEL in id_like:
-            vendor_base = RHEL
-        elif vendor == ARCH or ARCH in id_like:
-            vendor_base = ARCH
-        elif vendor == SUSE or SUSE in id_like:
-            vendor_base = SUSE
-        else:
-            vendor_base = None
-
-        return vendor, codename, vendor_base
 
 
 class LocalRequirementsMixin:  # pragma: no-cover-if-is-windows
